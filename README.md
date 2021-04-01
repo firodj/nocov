@@ -4,7 +4,7 @@
 
 ## Description
 
-This tool is used to post-process the cover profile files created by go test in order to eliminate blocks of code from the test coverage statistics. 
+This tool is used to post-process the cover profile files created by go test in order to eliminate blocks of code from the test coverage statistics.
 
 ## Usage
 
@@ -17,4 +17,10 @@ sort -i c.out
 ./nocov c.out > c.out.modified
 sort -i c.out.modified
 go tool cover -html=c.out.modified
+```
+
+Or for development:
+
+```bash
+make
 ```

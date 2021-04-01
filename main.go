@@ -61,8 +61,6 @@ func findAbsFilePath(pkg *packages.Package, profileName string) string {
 
 func main() {
 
-	//nocoverage
-
 	var coverFilename string
 	var commentMarker string
 	var coverCount int
@@ -93,8 +91,6 @@ func main() {
 		pkgMap[pkg.ID] = pkg
 	}
 
-	fmt.Printf("pkgMap: %v\n", pkgMap)
-
 	for _, profile := range profiles {
 		pkgName := getPackageName(profile.FileName)
 		pkgPkg := pkgMap[pkgName]
@@ -105,7 +101,6 @@ func main() {
 
 		fileName := profile.FileName[len(pkgPkg.Module.Path)+1:]
 		absFilePath := findAbsFilePath(pkgPkg, profile.FileName)
-		fmt.Printf("fileName: %s abs: %s\n", fileName, absFilePath)
 
 		//nocoverage
 

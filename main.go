@@ -6,13 +6,19 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"golang.org/x/tools/cover"
-	"golang.org/x/tools/go/ast/astutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/tools/cover"
+	"golang.org/x/tools/go/ast/astutil"
+	"golang.org/x/tools/go/packages"
 )
+
+type Source struct {
+	Path string
+}
 
 func usage() {
 	//nocoverage
@@ -20,10 +26,42 @@ func usage() {
 	flag.PrintDefaults()
 }
 
+func getPackageName(filename string) string {
+	pkgName, _ := filepath.Split(filename)
+	// TODO(boumenot): Windows vs. Linux
+	return strings.TrimRight(strings.TrimRight(pkgName, "\\"), "/")
+}
+
+func getPackages(profiles []*cover.Profile) ([]*packages.Package, error) {
+	var pkgNames []string
+	for _, profile := range profiles {
+		pkgNames = append(pkgNames, getPackageName(profile.FileName))
+	}
+	return packages.Load(&packages.Config{Mode: packages.NeedFiles | packages.NeedModule}, pkgNames...)
+}
+
+func appendIfUnique(sources []*Source, dir string) []*Source {
+	for _, source := range sources {
+		if source.Path == dir {
+			return sources
+		}
+	}
+	return append(sources, &Source{dir})
+}
+
+func findAbsFilePath(pkg *packages.Package, profileName string) string {
+	filename := filepath.Base(profileName)
+	for _, fullpath := range pkg.GoFiles {
+		if filepath.Base(fullpath) == filename {
+			return fullpath
+		}
+	}
+	return ""
+}
+
 func main() {
 
 	//nocoverage
-	gopath := os.Getenv("GOPATH")
 
 	var coverFilename string
 	var commentMarker string
@@ -42,14 +80,37 @@ func main() {
 		os.Exit(1)
 	}
 
+	pkgs, err := getPackages(profiles)
+	if err != nil {
+		log.Fatalf("Error load packages: %s", err)
+		os.Exit(1)
+	}
+
+	sources := make([]*Source, 0)
+	pkgMap := make(map[string]*packages.Package)
+	for _, pkg := range pkgs {
+		sources = appendIfUnique(sources, pkg.Module.Dir)
+		pkgMap[pkg.ID] = pkg
+	}
+
+	fmt.Printf("pkgMap: %v\n", pkgMap)
+
 	for _, profile := range profiles {
+		pkgName := getPackageName(profile.FileName)
+		pkgPkg := pkgMap[pkgName]
+		if pkgPkg == nil || pkgPkg.Module == nil {
+			log.Fatalf("package required when using go modules")
+			os.Exit(1)
+		}
+
+		fileName := profile.FileName[len(pkgPkg.Module.Path)+1:]
+		absFilePath := findAbsFilePath(pkgPkg, profile.FileName)
+		fmt.Printf("fileName: %s abs: %s\n", fileName, absFilePath)
 
 		//nocoverage
 
-		fileName := filepath.Join(gopath, "src", profile.FileName)
-
 		fset := token.NewFileSet()
-		parsedFile, err := parser.ParseFile(fset, fileName, nil, parser.ParseComments)
+		parsedFile, err := parser.ParseFile(fset, absFilePath, nil, parser.ParseComments)
 		if err != nil {
 			log.Fatalf("Failed to open go source file: %s: %s", fileName, err)
 			os.Exit(1)

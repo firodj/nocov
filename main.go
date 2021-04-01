@@ -6,9 +6,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"golang.org/x/tools/cover"
@@ -68,6 +70,12 @@ func main() {
 	flag.StringVar(&commentMarker, "commentMarker", "//nocoverage", "The comment to search for in the code that is used to define a block that cannot be covered by the tests")
 	flag.IntVar(&coverCount, "coverCount", -1, "Blocks marked with the <commentMarker> will be assigned to have been covered <coverCount> times. If this number is negative, the block is removed from the coverage report")
 
+	var ignore Ignore
+
+	flag.BoolVar(&ignore.GeneratedFiles, "ignore-gen-files", false, "ignore generated files")
+	ignoreDirsRe := flag.String("ignore-dirs", "", "ignore dirs matching this regexp")
+	ignoreFilesRe := flag.String("ignore-files", "", "ignore files matching this regexp")
+
 	flag.Usage = usage
 	flag.Parse()
 
@@ -76,6 +84,22 @@ func main() {
 		//nocoverage
 		log.Fatalf("Failed to open cover profile file: %s: %s", coverFilename, err)
 		os.Exit(1)
+	}
+
+	if *ignoreDirsRe != "" {
+		ignore.Dirs, err = regexp.Compile(*ignoreDirsRe)
+		if err != nil {
+			log.Fatalf("Bad -ignore-dirs regexp: %s\n", err)
+			os.Exit(1)
+		}
+	}
+
+	if *ignoreFilesRe != "" {
+		ignore.Files, err = regexp.Compile(*ignoreFilesRe)
+		if err != nil {
+			log.Fatalf("Bad -ignore-files regexp: %s\n", err)
+			os.Exit(1)
+		}
 	}
 
 	pkgs, err := getPackages(profiles)
@@ -90,6 +114,8 @@ func main() {
 		sources = appendIfUnique(sources, pkg.Module.Dir)
 		pkgMap[pkg.ID] = pkg
 	}
+
+	modeSet := true
 
 	for _, profile := range profiles {
 		pkgName := getPackageName(profile.FileName)
@@ -107,8 +133,19 @@ func main() {
 		fset := token.NewFileSet()
 		parsedFile, err := parser.ParseFile(fset, absFilePath, nil, parser.ParseComments)
 		if err != nil {
-			log.Fatalf("Failed to open go source file: %s: %s", fileName, err)
+			log.Fatalf("Failed to open go source file: %s: %s", absFilePath, err)
 			os.Exit(1)
+		}
+
+		data, err := ioutil.ReadFile(absFilePath)
+		if err != nil {
+			log.Fatalf("Failed to read go source file: %s: %s", absFilePath, err)
+			os.Exit(1)
+		}
+
+		if ignore.Match(fileName, data) {
+			log.Printf("Cov ignoring: %s", fileName)
+			continue
 		}
 
 		comments := extractComments(parsedFile, fset, commentMarker)
@@ -122,12 +159,17 @@ func main() {
 			}
 		}
 
+		if modeSet {
+			out := fmt.Sprintf("mode: %s\n", profile.Mode)
+			fmt.Print(out)
+			modeSet = false
+		}
 		fmt.Print(printProfile(profile))
 	}
 }
 
 func printProfile(profile *cover.Profile) string {
-	out := fmt.Sprintf("mode: %s\n", profile.Mode)
+	var out string
 	for _, block := range profile.Blocks {
 		if block.Count >= 0 {
 			out += fmt.Sprintf("%s:%d.%d,%d.%d %d %d\n", profile.FileName, block.StartLine, block.StartCol, block.EndLine, block.EndCol, block.NumStmt, block.Count)

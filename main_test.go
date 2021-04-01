@@ -1,8 +1,9 @@
 package main
 
 import (
-	"golang.org/x/tools/cover"
 	"testing"
+
+	"golang.org/x/tools/cover"
 )
 
 func TestMain_NewBlock(t *testing.T) {
@@ -78,7 +79,7 @@ func TestMain_IsWithin_PrintProfile(t *testing.T) {
 	}
 
 	out := printProfile(&profile)
-	if out != "mode: MODE\nFILENAME:1.5,10.15 0 0\nFILENAME:11.5,20.15 0 0\n" {
-		t.Error("print cover profile")
+	if out != "FILENAME:1.5,10.15 0 0\nFILENAME:11.5,20.15 0 0\n" {
+		t.Errorf("print cover profile: %s", out)
 	}
 }
